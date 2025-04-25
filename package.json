@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@tomphttp/bare-server-node": "^2.0.5",
+    "axios": "^1.9.0",
     "babel-loader": "^10.0.0",
     "browserify-zlib": "^0.2.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "https-browserify": "^1.0.0",
     "next": "15.3.1",
+    "node-fetch": "^2.6.7",
     "os-browserify": "^0.3.0",
     "path-browserify": "^1.0.1",
     "react": "^19.0.0",
@@ -24,6 +26,7 @@
     "stream-browserify": "^3.0.0",
     "stream-http": "^3.2.0",
     "url": "^0.11.4",
+    "urlpattern-polyfill": "^10.0.0",
     "util": "^0.12.5"
   },
   "devDependencies": {

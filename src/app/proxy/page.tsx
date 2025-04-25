@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
-import { decodeProxyUrl, createBareRequest } from '@/utils/ultraviolet';
+import { decodeProxyUrl } from '@/utils/ultraviolet';
 
 export default function ProxyPage() {
   const searchParams = useSearchParams();
@@ -11,7 +11,8 @@ export default function ProxyPage() {
   const [originalUrl, setOriginalUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!encodedUrl) {
@@ -19,7 +20,7 @@ export default function ProxyPage() {
       return;
     }
 
-    const fetchContent = async () => {
+    const loadContent = async () => {
       try {
         console.log('プロキシページ: エンコードされたURLを処理中:', encodedUrl);
         
@@ -33,87 +34,82 @@ export default function ProxyPage() {
         
         setOriginalUrl(decodedUrl);
         
-        // Bare Serverを通じてコンテンツを取得
-        const response = await createBareRequest(decodedUrl, {
-          method: 'GET',
-          headers: {
-            'User-Agent': navigator.userAgent,
-          },
-        });
-        
-        if (!response.ok) {
-          throw new Error(`コンテンツの取得に失敗しました: ${response.status} ${response.statusText}`);
-        }
-        
-        // レスポンスからHTMLを取得
-        const html = await response.text();
-        
-        // コンテンツを表示用の要素に設定
-        if (contentRef.current) {
-          // コンテンツのベースURLを設定
-          const baseEl = document.createElement('base');
-          baseEl.href = decodedUrl;
-          
-          // コンテンツをiframeとして表示（サンドボックス環境で）
-          const iframe = document.createElement('iframe');
-          iframe.style.width = '100%';
-          iframe.style.height = '100%';
-          iframe.style.border = 'none';
-          
-          contentRef.current.innerHTML = '';
-          contentRef.current.appendChild(iframe);
-          
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-          if (iframeDoc) {
-            iframeDoc.open();
-            
-            // ベースURLとプロキシ用のスクリプトを追加
-            iframeDoc.write(`
-              <base href="${decodedUrl}">
-              <style>
-                body { margin: 0; padding: 0; }
-              </style>
-              ${html}
-            `);
-            
-            iframeDoc.close();
-            
-            // iframeリンククリックをハンドル
-            const handleLinks = (doc: Document) => {
-              doc.querySelectorAll('a').forEach(link => {
-                link.addEventListener('click', (e) => {
-                  e.preventDefault();
-                  const href = link.getAttribute('href');
-                  if (href) {
-                    const fullUrl = new URL(href, decodedUrl).toString();
-                    // 新しいURLをプロキシ化してナビゲート
-                    const newEncodedUrl = encodeURIComponent(decodeProxyUrl(fullUrl));
-                    window.location.href = `/proxy?url=${newEncodedUrl}`;
-                  }
-                });
-              });
-            };
-            
-            // リンクをハンドリング
-            try {
-              handleLinks(iframeDoc);
-            } catch (e) {
-              console.warn('リンクハンドリングエラー:', e);
-            }
+        // カスタムプロキシエンドポイントでURLをプロキシ
+        if (iframeRef.current) {
+          // 前回のタイムアウトをクリア
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
           }
+          
+          // プログレッシブローディングのためのタイムアウト
+          // 8秒後に強制的にローディングを終了
+          loadingTimeoutRef.current = setTimeout(() => {
+            if (isLoading) {
+              console.log('タイムアウトによりローディング状態を終了します');
+              setIsLoading(false);
+            }
+          }, 8000);
+          
+          // 正規化されたURL
+          const normalizedUrl = decodedUrl.trim().replace(/\/$/, '');
+          
+          // プロキシURL
+          const proxyUrl = `/custom-proxy?url=${encodeURIComponent(normalizedUrl)}`;
+          console.log('プロキシURL:', proxyUrl);
+          
+          // iframeの読み込みイベントを監視
+          iframeRef.current.onload = () => {
+            console.log('iframeのコンテンツが読み込まれました');
+            // タイムアウトをクリア
+            if (loadingTimeoutRef.current) {
+              clearTimeout(loadingTimeoutRef.current);
+              loadingTimeoutRef.current = null;
+            }
+            // ローディング状態を終了
+            setIsLoading(false);
+          };
+          
+          // エラーハンドラを設定
+          iframeRef.current.onerror = (e) => {
+            console.error('iframeの読み込みエラー:', e);
+            setError('コンテンツの読み込みに失敗しました');
+            setIsLoading(false);
+            
+            // タイムアウトをクリア
+            if (loadingTimeoutRef.current) {
+              clearTimeout(loadingTimeoutRef.current);
+              loadingTimeoutRef.current = null;
+            }
+          };
+          
+          // srcを設定して読み込み開始
+          iframeRef.current.src = proxyUrl;
         }
-        
-        setIsLoading(false);
       } catch (error) {
         console.error('プロキシページエラー:', error);
         setError(error instanceof Error ? error.message : '未知のエラーが発生しました');
         setIsLoading(false);
+        
+        // タイムアウトをクリア
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current);
+          loadingTimeoutRef.current = null;
+        }
       }
     };
 
-    fetchContent();
-  }, [encodedUrl]);
+    // コンテンツ読み込み実行
+    loadContent();
+    
+    // クリーンアップ関数
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+    };
+  }, [encodedUrl, isLoading]);
 
+  // URLが指定されていない場合
   if (!encodedUrl) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -137,6 +133,7 @@ export default function ProxyPage() {
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto mb-4"></div>
             <p>読み込み中...</p>
+            <p className="text-xs text-gray-400 mt-2">初回読み込みには数秒かかることがあります</p>
           </div>
         </div>
       )}
@@ -161,10 +158,12 @@ export default function ProxyPage() {
         </div>
       )}
       
-      <div 
-        ref={contentRef}
+      <iframe
+        ref={iframeRef}
         className={`flex-1 w-full ${isLoading || error ? 'hidden' : 'block'}`}
-      ></div>
+        title="Proxied Content"
+        sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts"
+      ></iframe>
     </div>
   );
 }
