@@ -1,28 +1,71 @@
-import { Ultraviolet } from '@titaniumnetwork-dev/ultraviolet';
-import { BareClient } from '@tomphttp/bare-client';
+import { createBareClient } from '@tomphttp/bare-client';
 
-let ultraviolet: Ultraviolet | null = null;
-let bareClient: BareClient | null = null;
+// 型定義
+interface UVConfig {
+  bare: any;
+  prefix: string;
+}
+
+interface UVInstance {
+  encodeUrl: (url: string) => string;
+  decodeUrl: (encodedUrl: string) => string;
+}
+
+// グローバルUltravioletオブジェクトの型定義
+declare global {
+  interface Window {
+    Ultraviolet?: {
+      codec: {
+        xor: {
+          encode: (url: string) => string;
+          decode: (encodedUrl: string) => string;
+        }
+      }
+    }
+  }
+}
+
+let uvInstance: UVInstance | null = null;
+let bareClient: any = null;
 
 // Ultravioletインスタンスを初期化する関数
 export const initUltraviolet = async () => {
   // ブラウザ環境でのみ実行
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') return null;
 
   if (!bareClient) {
     // Bare Serverに接続
-    bareClient = new BareClient('/bare/');
+    bareClient = createBareClient('/bare/');
   }
 
-  if (!ultraviolet) {
-    // Ultravioletインスタンスを作成
-    ultraviolet = new Ultraviolet({
-      bare: bareClient,
-      prefix: '/service/',
-    });
+  if (!uvInstance) {
+    // クライアント側でUltravioletスクリプトを動的に読み込む
+    try {
+      // グローバルに登録されたUltravioletを使用
+      const Ultraviolet = (window as any).Ultraviolet;
+      
+      if (!Ultraviolet) {
+        console.error('Ultravioletが読み込まれていません');
+        return null;
+      }
+
+      // コンフィグを使用してインスタンス化
+      const uvConfig: UVConfig = {
+        bare: bareClient,
+        prefix: '/service/'
+      };
+      
+      uvInstance = {
+        encodeUrl: (url: string) => Ultraviolet.codec.xor.encode(url),
+        decodeUrl: (encodedUrl: string) => Ultraviolet.codec.xor.decode(encodedUrl)
+      };
+    } catch (err) {
+      console.error('Ultravioletの初期化エラー:', err);
+      return null;
+    }
   }
 
-  return ultraviolet;
+  return uvInstance;
 };
 
 // URLを処理する関数

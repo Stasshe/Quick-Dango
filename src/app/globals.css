@@ -8,9 +8,8 @@
   --header-bg: #1a1a1a;
   --input-bg: #252525;
   --button-hover: #4d4d4d;
-}
-
-@theme inline {
+  
+  /* テーマ変数 */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
