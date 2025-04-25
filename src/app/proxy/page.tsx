@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import Script from 'next/script';
+import { registerUVServiceWorker } from '@/utils/ultraviolet';
 
 export default function ProxyPage() {
   const searchParams = useSearchParams();
@@ -18,13 +19,20 @@ export default function ProxyPage() {
       try {
         console.log('プロキシページ：Ultravioletスクリプトを読み込み中...');
         
-        // サービスワーカーの登録を待つ
-        await new Promise<void>((resolve) => {
+        // Ultravioletの初期化と、サービスワーカーの登録を待つ
+        await new Promise<void>((resolve, reject) => {
           // グローバルUltravioletオブジェクトが利用可能になるのを待つ
-          const checkUv = setInterval(() => {
+          const checkUv = setInterval(async () => {
             if (window.Ultraviolet) {
               console.log('プロキシページ：Ultravioletが初期化されました');
               clearInterval(checkUv);
+              
+              // サービスワーカーを登録
+              const registered = await registerUVServiceWorker();
+              if (!registered) {
+                console.warn('サービスワーカーの登録に失敗しました');
+              }
+              
               resolve();
             }
           }, 100);
@@ -42,10 +50,9 @@ export default function ProxyPage() {
         // 元のURLを取得する（可能であれば）
         try {
           // グローバルUltravioletオブジェクトにアクセス
-          const uv = window.Ultraviolet;
-          if (uv && uv.codec && uv.codec.xor && encodedUrl) {
+          if (window.Ultraviolet?.codec?.xor && encodedUrl) {
             console.log('プロキシページ：エンコードされたURLを復号中:', encodedUrl);
-            const decodedUrl = uv.codec.xor.decode(decodeURIComponent(encodedUrl));
+            const decodedUrl = window.Ultraviolet.codec.xor.decode(decodeURIComponent(encodedUrl));
             console.log('プロキシページ：復号されたURL:', decodedUrl);
             setOriginalUrl(decodedUrl);
           } else {
@@ -71,6 +78,14 @@ export default function ProxyPage() {
             setError('コンテンツの読み込みに失敗しました');
             setIsLoading(false);
           };
+          
+          // 10秒後のタイムアウト処理（iframeのロードが完了しない場合）
+          setTimeout(() => {
+            if (isLoading) {
+              console.warn('プロキシページ：iframeのロードがタイムアウトしました');
+              setIsLoading(false);
+            }
+          }, 10000);
         } else {
           console.warn('プロキシページ：iframe要素が見つからないか、URLが未指定です');
           setIsLoading(false);
@@ -98,7 +113,7 @@ export default function ProxyPage() {
         iframe.src = 'about:blank';
       }
     };
-  }, [encodedUrl]);
+  }, [encodedUrl, isLoading]);
 
   if (!encodedUrl) {
     return (
@@ -116,11 +131,10 @@ export default function ProxyPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      {/* Ultravioletスクリプトの読み込み */}
-      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
+      {/* Ultravioletスクリプトの読み込み - 正しい順序で読み込むことが重要 */}
       <Script src="/uv/uv.bundle.js" strategy="beforeInteractive" />
+      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
       <Script src="/uv/uv.handler.js" strategy="beforeInteractive" />
-      <Script src="/uv/sw.js" strategy="afterInteractive" />
       
       <Header currentUrl={originalUrl} isProxyPage={true} />
       
