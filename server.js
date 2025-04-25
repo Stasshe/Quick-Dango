@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.prepare().then(() => {
   const server = createServer();
   
-  // ベアサーバーを作成し、'/bare/'パスに設定
+  // Bare Serverの設定 - プロキシリクエストの処理に使用
   const bareServer = createBareServer('/bare/');
   
   server.on('request', (req, res) => {

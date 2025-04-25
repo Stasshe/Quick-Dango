@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
-import Script from 'next/script';
-import { registerUVServiceWorker } from '@/utils/ultraviolet';
+import { decodeProxyUrl, createBareRequest } from '@/utils/ultraviolet';
 
 export default function ProxyPage() {
   const searchParams = useSearchParams();
@@ -12,108 +11,108 @@ export default function ProxyPage() {
   const [originalUrl, setOriginalUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Ultravioletスクリプトをロードする
-    const loadUvScript = async () => {
+    if (!encodedUrl) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchContent = async () => {
       try {
-        console.log('プロキシページ：Ultravioletスクリプトを読み込み中...');
+        console.log('プロキシページ: エンコードされたURLを処理中:', encodedUrl);
         
-        // Ultravioletの初期化と、サービスワーカーの登録を待つ
-        await new Promise<void>((resolve, reject) => {
-          // グローバルUltravioletオブジェクトが利用可能になるのを待つ
-          const checkUv = setInterval(async () => {
-            if (window.Ultraviolet) {
-              console.log('プロキシページ：Ultravioletが初期化されました');
-              clearInterval(checkUv);
-              
-              // サービスワーカーを登録
-              const registered = await registerUVServiceWorker();
-              if (!registered) {
-                console.warn('サービスワーカーの登録に失敗しました');
-              }
-              
-              resolve();
-            }
-          }, 100);
-          
-          // 5秒後にタイムアウト
-          setTimeout(() => {
-            if (!window.Ultraviolet) {
-              console.warn('プロキシページ：Ultravioletの初期化がタイムアウトしました');
-              clearInterval(checkUv);
-              resolve(); // タイムアウトしても続行
-            }
-          }, 5000);
+        // URLをデコード
+        const decodedUrl = decodeProxyUrl(decodeURIComponent(encodedUrl));
+        console.log('プロキシページ: デコードされたURL:', decodedUrl);
+        
+        if (!decodedUrl) {
+          throw new Error('URLのデコードに失敗しました');
+        }
+        
+        setOriginalUrl(decodedUrl);
+        
+        // Bare Serverを通じてコンテンツを取得
+        const response = await createBareRequest(decodedUrl, {
+          method: 'GET',
+          headers: {
+            'User-Agent': navigator.userAgent,
+          },
         });
-
-        // 元のURLを取得する（可能であれば）
-        try {
-          // グローバルUltravioletオブジェクトにアクセス
-          if (window.Ultraviolet?.codec?.xor && encodedUrl) {
-            console.log('プロキシページ：エンコードされたURLを復号中:', encodedUrl);
-            const decodedUrl = window.Ultraviolet.codec.xor.decode(decodeURIComponent(encodedUrl));
-            console.log('プロキシページ：復号されたURL:', decodedUrl);
-            setOriginalUrl(decodedUrl);
-          } else {
-            console.warn('プロキシページ：Ultravioletが正しく初期化されていないか、URLが不正です');
-            setError('Ultravioletの初期化に失敗したか、URLが無効です');
-          }
-        } catch (err) {
-          console.error('プロキシページ：URLのデコードエラー:', err);
-          setError('URLの処理中にエラーが発生しました');
+        
+        if (!response.ok) {
+          throw new Error(`コンテンツの取得に失敗しました: ${response.status} ${response.statusText}`);
         }
-
-        // iframeを作成してプロキシURLを読み込む
-        const iframe = document.getElementById('proxy-iframe') as HTMLIFrameElement;
-        if (iframe && encodedUrl) {
-          console.log('プロキシページ：iframeにURLをロード:', `/service/${encodedUrl}`);
-          iframe.src = `/service/${encodedUrl}`;
-          iframe.onload = () => {
-            console.log('プロキシページ：iframeのコンテンツが読み込まれました');
-            setIsLoading(false);
-          };
-          iframe.onerror = (err) => {
-            console.error('プロキシページ：iframeの読み込みエラー:', err);
-            setError('コンテンツの読み込みに失敗しました');
-            setIsLoading(false);
-          };
+        
+        // レスポンスからHTMLを取得
+        const html = await response.text();
+        
+        // コンテンツを表示用の要素に設定
+        if (contentRef.current) {
+          // コンテンツのベースURLを設定
+          const baseEl = document.createElement('base');
+          baseEl.href = decodedUrl;
           
-          // 10秒後のタイムアウト処理（iframeのロードが完了しない場合）
-          setTimeout(() => {
-            if (isLoading) {
-              console.warn('プロキシページ：iframeのロードがタイムアウトしました');
-              setIsLoading(false);
+          // コンテンツをiframeとして表示（サンドボックス環境で）
+          const iframe = document.createElement('iframe');
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          iframe.style.border = 'none';
+          
+          contentRef.current.innerHTML = '';
+          contentRef.current.appendChild(iframe);
+          
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (iframeDoc) {
+            iframeDoc.open();
+            
+            // ベースURLとプロキシ用のスクリプトを追加
+            iframeDoc.write(`
+              <base href="${decodedUrl}">
+              <style>
+                body { margin: 0; padding: 0; }
+              </style>
+              ${html}
+            `);
+            
+            iframeDoc.close();
+            
+            // iframeリンククリックをハンドル
+            const handleLinks = (doc: Document) => {
+              doc.querySelectorAll('a').forEach(link => {
+                link.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  const href = link.getAttribute('href');
+                  if (href) {
+                    const fullUrl = new URL(href, decodedUrl).toString();
+                    // 新しいURLをプロキシ化してナビゲート
+                    const newEncodedUrl = encodeURIComponent(decodeProxyUrl(fullUrl));
+                    window.location.href = `/proxy?url=${newEncodedUrl}`;
+                  }
+                });
+              });
+            };
+            
+            // リンクをハンドリング
+            try {
+              handleLinks(iframeDoc);
+            } catch (e) {
+              console.warn('リンクハンドリングエラー:', e);
             }
-          }, 10000);
-        } else {
-          console.warn('プロキシページ：iframe要素が見つからないか、URLが未指定です');
-          setIsLoading(false);
-          if (!encodedUrl) {
-            setError('URLが指定されていません');
           }
         }
+        
+        setIsLoading(false);
       } catch (error) {
-        console.error('プロキシページ：読み込みエラー:', error);
+        console.error('プロキシページエラー:', error);
         setError(error instanceof Error ? error.message : '未知のエラーが発生しました');
         setIsLoading(false);
       }
     };
 
-    if (encodedUrl) {
-      loadUvScript();
-    } else {
-      setIsLoading(false);
-    }
-
-    // クリーンアップ
-    return () => {
-      const iframe = document.getElementById('proxy-iframe') as HTMLIFrameElement;
-      if (iframe) {
-        iframe.src = 'about:blank';
-      }
-    };
-  }, [encodedUrl, isLoading]);
+    fetchContent();
+  }, [encodedUrl]);
 
   if (!encodedUrl) {
     return (
@@ -131,11 +130,6 @@ export default function ProxyPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      {/* Ultravioletスクリプトの読み込み - 正しい順序で読み込むことが重要 */}
-      <Script src="/uv/uv.bundle.js" strategy="beforeInteractive" />
-      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
-      <Script src="/uv/uv.handler.js" strategy="beforeInteractive" />
-      
       <Header currentUrl={originalUrl} isProxyPage={true} />
       
       {isLoading && (
@@ -167,12 +161,10 @@ export default function ProxyPage() {
         </div>
       )}
       
-      <iframe
-        id="proxy-iframe"
+      <div 
+        ref={contentRef}
         className={`flex-1 w-full ${isLoading || error ? 'hidden' : 'block'}`}
-        title="Proxied Content"
-        sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts"
-      ></iframe>
+      ></div>
     </div>
   );
 }

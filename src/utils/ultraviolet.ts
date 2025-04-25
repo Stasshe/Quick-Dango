@@ -1,69 +1,55 @@
-// 型定義
-interface UVConfig {
-  bare: any;
-  prefix: string;
-}
+/**
+ * シンプルなプロキシユーティリティ
+ * Ultravioletを使用せず、Bare Serverを直接使用します
+ */
 
-interface UVInstance {
-  encodeUrl: (url: string) => string;
-  decodeUrl: (encodedUrl: string) => string;
-}
-
-// グローバルUltravioletオブジェクトの型定義
-declare global {
-  interface Window {
-    Ultraviolet?: {
-      codec: {
-        xor: {
-          encode: (url: string) => string;
-          decode: (encodedUrl: string) => string;
-        }
-      }
-    }
-  }
-}
-
-let uvInstance: UVInstance | null = null;
-
-// Ultravioletインスタンスを初期化する関数
-export const initUltraviolet = async () => {
-  // ブラウザ環境でのみ実行
-  if (typeof window === 'undefined') return null;
-
-  if (!uvInstance) {
-    // クライアント側でUltravioletスクリプトを動的に読み込む
-    try {
-      // グローバルに登録されたUltravioletを使用
-      const Ultraviolet = (window as any).Ultraviolet;
-      
-      if (!Ultraviolet) {
-        console.error('Ultravioletが読み込まれていません');
-        return null;
-      }
-      
-      uvInstance = {
-        encodeUrl: (url: string) => Ultraviolet.codec.xor.encode(url),
-        decodeUrl: (encodedUrl: string) => Ultraviolet.codec.xor.decode(encodedUrl)
-      };
-    } catch (err) {
-      console.error('Ultravioletの初期化エラー:', err);
-      return null;
-    }
-  }
-
-  return uvInstance;
+// URLエンコード／デコード用の簡易関数
+const simpleEncode = (url: string): string => {
+  // Base64エンコードを使用してURLを難読化
+  return btoa(url).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 };
 
-// URLを処理する関数
+const simpleDecode = (encoded: string): string => {
+  try {
+    // Base64デコード
+    let str = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) str += '=';
+    return atob(str);
+  } catch (e) {
+    console.error('デコードエラー:', e);
+    return '';
+  }
+};
+
+// グローバルタイプ定義
+declare global {
+  interface Window {
+    // グローバル設定（必要に応じて拡張）
+    __rapid_dango_config?: {
+      prefix: string;
+    };
+  }
+}
+
+/**
+ * URLを処理する関数
+ * 入力されたURLまたは検索語句を適切に処理します
+ */
 export const processUrl = (input: string): string => {
-  // 入力がURLかどうかをチェック
-  let url: URL;
   try {
     // URLスキームがなければ追加
     if (!input.startsWith('http://') && !input.startsWith('https://')) {
-      input = 'https://' + input;
+      // ドメイン形式なら https:// を追加
+      if (input.includes('.') && !input.includes(' ')) {
+        input = 'https://' + input;
+      } else {
+        // 検索クエリとして扱う
+        return `https://www.bing.com/search?q=${encodeURIComponent(input)}`;
+      }
     }
-    url = new URL(input);
+    
+    // URLとして解析できるか確認
+    new URL(input);
     return input;
   } catch (err) {
     // URLでなければ検索クエリとして扱う
@@ -71,58 +57,53 @@ export const processUrl = (input: string): string => {
   }
 };
 
-// Ultravioletでページを開く関数
-export const openInUltraviolet = async (url: string): Promise<string> => {
-  const uv = await initUltraviolet();
-  if (!uv) throw new Error('Ultravioletが初期化されていません');
-  
+/**
+ * プロキシ用のURLを生成
+ * Bare Serverを通じてアクセスするためのURLを返します
+ */
+export const generateProxyUrl = (url: string): string => {
   const processedUrl = processUrl(url);
-  
-  // Ultravioletでプロキシするための処理済みURLを返す
-  return uv.encodeUrl(processedUrl);
+  const encodedUrl = simpleEncode(processedUrl);
+  return encodedUrl;
 };
 
-// ページロード時にUltravioletを初期化するスクリプト
-export const registerUVServiceWorker = (): Promise<boolean> => {
-  return new Promise((resolve) => {
-    // ブラウザ環境でのみ実行
-    if (typeof window === 'undefined') {
-      resolve(false);
-      return;
-    }
+/**
+ * プロキシURLをデコード
+ * エンコードされたURLを元のURLに戻します
+ */
+export const decodeProxyUrl = (encodedUrl: string): string => {
+  try {
+    return simpleDecode(encodedUrl);
+  } catch (err) {
+    console.error('プロキシURLのデコードエラー:', err);
+    return '';
+  }
+};
 
-    console.log('サービスワーカーの登録を試みています...');
-    
-    // サービスワーカーをサポートしているか確認
-    if (!('serviceWorker' in navigator)) {
-      console.error('このブラウザはサービスワーカーをサポートしていません');
-      resolve(false);
-      return;
-    }
-
-    // サービスワーカーが既に登録されているか確認
-    navigator.serviceWorker.getRegistrations().then(registrations => {
-      const hasUVServiceWorker = registrations.some(
-        reg => reg.scope.includes('/service/')
-      );
-
-      if (hasUVServiceWorker) {
-        console.log('Ultravioletサービスワーカーは既に登録されています');
-        resolve(true);
-        return;
-      }
-
-      // サービスワーカーを登録
-      navigator.serviceWorker.register('/uv/uv.sw.js', {
-        scope: '/service/',
-        updateViaCache: 'none'
-      }).then(() => {
-        console.log('Ultravioletサービスワーカーが正常に登録されました');
-        resolve(true);
-      }).catch(err => {
-        console.error('サービスワーカーの登録中にエラーが発生しました:', err);
-        resolve(false);
-      });
-    });
-  });
+/**
+ * BareサーバーへのHTTPリクエストを作成
+ * クライアント側でBare Serverにリクエストを送るためのヘルパー関数
+ */
+export const createBareRequest = async (
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> => {
+  const bareUrl = '/bare/';
+  const targetUrl = new URL(url);
+  
+  // Bareサーバーへのリクエストヘッダーを作成
+  const headers = new Headers(options.headers);
+  headers.set('x-bare-url', url);
+  headers.set('x-bare-host', targetUrl.hostname);
+  headers.set('x-bare-protocol', targetUrl.protocol);
+  headers.set('x-bare-port', targetUrl.port || (targetUrl.protocol === 'https:' ? '443' : '80'));
+  headers.set('x-bare-path', targetUrl.pathname + targetUrl.search);
+  
+  // Bareサーバーへリクエスト
+  const bareOptions: RequestInit = {
+    ...options,
+    headers,
+  };
+  
+  return fetch(bareUrl, bareOptions);
 };

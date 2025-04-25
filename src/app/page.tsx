@@ -1,68 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { openInUltraviolet, registerUVServiceWorker } from '@/utils/ultraviolet';
-import Script from 'next/script';
+import { generateProxyUrl } from '@/utils/ultraviolet';
 
 export default function Home() {
   const router = useRouter();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uvReady, setUvReady] = useState(false);
-
-  // ページ読み込み時にUltravioletスクリプトを読み込む
-  useEffect(() => {
-    // クライアントサイドでのみ実行
-    if (typeof window === 'undefined') return;
-
-    const loadUvScript = async () => {
-      try {
-        console.log('Ultravioletの初期化中...');
-        
-        // すでにUltravioletが初期化されているかチェック
-        if (window.Ultraviolet) {
-          console.log('Ultravioletはすでに初期化されています');
-          // サービスワーカーを登録
-          await registerUVServiceWorker();
-          setUvReady(true);
-          return;
-        }
-        
-        // Ultravioletの初期化を待つ
-        const checkUvLoaded = setInterval(async () => {
-          if (window.Ultraviolet) {
-            console.log('Ultravioletが正常に初期化されました');
-            clearInterval(checkUvLoaded);
-            
-            // サービスワーカーを登録
-            const registered = await registerUVServiceWorker();
-            if (registered) {
-              setUvReady(true);
-            } else {
-              setError('サービスワーカーの登録に失敗しました');
-            }
-          }
-        }, 100);
-        
-        // 5秒後にタイムアウト
-        setTimeout(() => {
-          if (!window.Ultraviolet) {
-            console.error('Ultravioletの初期化がタイムアウトしました');
-            setError('プロキシの初期化に失敗しました。ページを再読み込みしてください。');
-            clearInterval(checkUvLoaded);
-          }
-        }, 5000);
-      } catch (err) {
-        console.error('スクリプト読み込みエラー:', err);
-        setError('プロキシの初期化に失敗しました。ページを再読み込みしてください。');
-      }
-    };
-
-    loadUvScript();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,11 +21,8 @@ export default function Home() {
     try {
       console.log('URLを処理中:', url);
       
-      if (!window.Ultraviolet) {
-        throw new Error('Ultravioletが初期化されていません。ページを再読み込みしてください。');
-      }
-      
-      const encodedUrl = await openInUltraviolet(url);
+      // URLをエンコード
+      const encodedUrl = generateProxyUrl(url);
       console.log('エンコードされたURL:', encodedUrl);
       
       // プロキシページに遷移
@@ -92,11 +36,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Ultravioletスクリプトの読み込み - 正しい順序で読み込むことが重要 */}
-      <Script src="/uv/uv.bundle.js" strategy="beforeInteractive" />
-      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
-      <Script src="/uv/uv.handler.js" strategy="beforeInteractive" />
-      
       <Header />
       
       <div className="home-container flex-1 px-4">
@@ -116,7 +55,7 @@ export default function Home() {
               <button 
                 type="submit" 
                 className="btn btn-primary px-6 py-3 rounded-r-md text-lg font-medium"
-                disabled={loading || !uvReady}
+                disabled={loading}
               >
                 {loading ? '読み込み中...' : '検索'}
               </button>
@@ -125,12 +64,6 @@ export default function Home() {
             {error && (
               <div className="mt-2 text-red-500 text-sm">
                 エラー: {error}
-              </div>
-            )}
-            
-            {!uvReady && !error && (
-              <div className="mt-2 text-yellow-500 text-sm">
-                プロキシを初期化中です...
               </div>
             )}
           </div>

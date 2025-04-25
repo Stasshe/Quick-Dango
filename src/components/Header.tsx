@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { openInUltraviolet } from '@/utils/ultraviolet';
+import { generateProxyUrl } from '@/utils/ultraviolet';
 import Link from 'next/link';
 
 interface HeaderProps {
@@ -32,12 +32,8 @@ export default function Header({ currentUrl = '', isProxyPage = false }: HeaderP
     try {
       console.log('ヘッダーからURLを処理中:', url);
       
-      // Ultravioletが初期化されているか確認
-      if (!window.Ultraviolet) {
-        throw new Error('プロキシが初期化されていません。ページを再読み込みしてください。');
-      }
-      
-      const encodedUrl = await openInUltraviolet(url);
+      // URLをエンコード
+      const encodedUrl = generateProxyUrl(url);
       console.log('ヘッダーからエンコードされたURL:', encodedUrl);
       
       router.push(`/proxy?url=${encodeURIComponent(encodedUrl)}`);
