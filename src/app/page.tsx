@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { openInUltraviolet } from '@/utils/ultraviolet';
@@ -10,17 +10,73 @@ export default function Home() {
   const router = useRouter();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uvReady, setUvReady] = useState(false);
+
+  // ページ読み込み時にUltravioletスクリプトを読み込む
+  useEffect(() => {
+    // クライアントサイドでのみ実行
+    if (typeof window === 'undefined') return;
+
+    const loadUvScript = async () => {
+      try {
+        console.log('Ultravioletスクリプトを読み込み中...');
+        
+        // すでにスクリプトが存在するかチェック
+        if (!document.querySelector('script[src="/uv/uv.bundle.js"]')) {
+          // UVクライアントスクリプトを読み込み
+          const script = document.createElement('script');
+          script.src = '/uv/uv.bundle.js';
+          script.async = true;
+          
+          // スクリプトの読み込みが完了したらフラグを設定
+          script.onload = () => {
+            console.log('Ultravioletスクリプトが正常に読み込まれました');
+            setUvReady(true);
+          };
+          
+          script.onerror = (err) => {
+            console.error('Ultravioletスクリプトの読み込みに失敗しました:', err);
+            setError('プロキシスクリプトの読み込みに失敗しました。ページを再読み込みしてください。');
+          };
+          
+          document.head.appendChild(script);
+        } else {
+          // すでに読み込まれている場合
+          console.log('Ultravioletスクリプトはすでに読み込まれています');
+          setUvReady(true);
+        }
+      } catch (err) {
+        console.error('スクリプト読み込みエラー:', err);
+        setError('プロキシの初期化に失敗しました。ページを再読み込みしてください。');
+      }
+    };
+
+    loadUvScript();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
 
     setLoading(true);
+    setError(null);
+    
     try {
+      console.log('URLを処理中:', url);
+      
+      if (!window.Ultraviolet) {
+        throw new Error('Ultravioletが初期化されていません。ページを再読み込みしてください。');
+      }
+      
       const encodedUrl = await openInUltraviolet(url);
+      console.log('エンコードされたURL:', encodedUrl);
+      
+      // プロキシページに遷移
       router.push(`/proxy?url=${encodeURIComponent(encodedUrl)}`);
     } catch (error) {
       console.error('プロキシエラー:', error);
+      setError(error instanceof Error ? error.message : '未知のエラーが発生しました');
       setLoading(false);
     }
   };
@@ -34,21 +90,35 @@ export default function Home() {
         <p className="text-center text-gray-300 mb-8">高速で安全なウェブプロキシサービス</p>
         
         <form onSubmit={handleSubmit} className="w-full max-w-lg mx-auto">
-          <div className="flex">
-            <input
-              type="text"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="URLまたは検索語句を入力"
-              className="search-input flex-1 rounded-l-md px-4 py-3 text-lg focus:ring-2 focus:ring-accent"
-            />
-            <button 
-              type="submit" 
-              className="btn btn-primary px-6 py-3 rounded-r-md text-lg font-medium"
-              disabled={loading}
-            >
-              {loading ? '読み込み中...' : '検索'}
-            </button>
+          <div className="flex flex-col">
+            <div className="flex">
+              <input
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="URLまたは検索語句を入力"
+                className="search-input flex-1 rounded-l-md px-4 py-3 text-lg focus:ring-2 focus:ring-accent"
+              />
+              <button 
+                type="submit" 
+                className="btn btn-primary px-6 py-3 rounded-r-md text-lg font-medium"
+                disabled={loading || !uvReady}
+              >
+                {loading ? '読み込み中...' : '検索'}
+              </button>
+            </div>
+            
+            {error && (
+              <div className="mt-2 text-red-500 text-sm">
+                エラー: {error}
+              </div>
+            )}
+            
+            {!uvReady && !error && (
+              <div className="mt-2 text-yellow-500 text-sm">
+                プロキシを初期化中です...
+              </div>
+            )}
           </div>
         </form>
         

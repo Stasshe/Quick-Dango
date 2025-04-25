@@ -13,6 +13,8 @@ interface HeaderProps {
 export default function Header({ currentUrl = '', isProxyPage = false }: HeaderProps) {
   const router = useRouter();
   const [url, setUrl] = useState(currentUrl);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentUrl) {
@@ -24,11 +26,25 @@ export default function Header({ currentUrl = '', isProxyPage = false }: HeaderP
     e.preventDefault();
     if (!url.trim()) return;
 
+    setLoading(true);
+    setError(null);
+
     try {
+      console.log('ヘッダーからURLを処理中:', url);
+      
+      // Ultravioletが初期化されているか確認
+      if (!window.Ultraviolet) {
+        throw new Error('プロキシが初期化されていません。ページを再読み込みしてください。');
+      }
+      
       const encodedUrl = await openInUltraviolet(url);
+      console.log('ヘッダーからエンコードされたURL:', encodedUrl);
+      
       router.push(`/proxy?url=${encodeURIComponent(encodedUrl)}`);
     } catch (error) {
-      console.error('プロキシエラー:', error);
+      console.error('ヘッダーからのプロキシエラー:', error);
+      setError(error instanceof Error ? error.message : '未知のエラーが発生しました');
+      setLoading(false);
     }
   };
 
@@ -41,19 +57,31 @@ export default function Header({ currentUrl = '', isProxyPage = false }: HeaderP
         </svg>
       </Link>
 
-      <form onSubmit={handleSubmit} className="flex-1 flex">
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="URLまたは検索語句を入力"
-          className="search-input flex-1 rounded-l-md px-4 py-2 focus:ring-2 focus:ring-accent"
-          disabled={isProxyPage}
-        />
-        {!isProxyPage && (
-          <button type="submit" className="btn btn-primary px-4 py-2 rounded-r-md">
-            検索
-          </button>
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
+        <div className="flex">
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="URLまたは検索語句を入力"
+            className="search-input flex-1 rounded-l-md px-4 py-2 focus:ring-2 focus:ring-accent"
+            disabled={isProxyPage || loading}
+          />
+          {!isProxyPage && (
+            <button 
+              type="submit" 
+              className="btn btn-primary px-4 py-2 rounded-r-md"
+              disabled={loading}
+            >
+              {loading ? '...' : '検索'}
+            </button>
+          )}
+        </div>
+        
+        {error && !isProxyPage && (
+          <div className="mt-1 text-red-500 text-xs">
+            {error}
+          </div>
         )}
       </form>
 

@@ -9,48 +9,87 @@ export default function ProxyPage() {
   const encodedUrl = searchParams.get('url') || '';
   const [originalUrl, setOriginalUrl] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Ultravioletスクリプトをロードする
     const loadUvScript = async () => {
       try {
+        console.log('プロキシページ：Ultravioletスクリプトを読み込み中...');
+        
         // UVクライアントスクリプトを読み込み
         const uvScript = document.createElement('script');
         uvScript.src = '/uv/uv.bundle.js';
         document.head.appendChild(uvScript);
 
         // スクリプトが読み込まれるのを待つ
-        await new Promise((resolve) => {
-          uvScript.onload = resolve;
+        await new Promise<void>((resolve, reject) => {
+          uvScript.onload = () => {
+            console.log('プロキシページ：Ultravioletスクリプトが読み込まれました');
+            resolve();
+          };
+          uvScript.onerror = () => {
+            reject(new Error('Ultravioletスクリプトの読み込みに失敗しました'));
+          };
+          
+          // 既にスクリプトが読み込まれている場合
+          if (window.Ultraviolet) {
+            console.log('プロキシページ：Ultravioletはすでに初期化されています');
+            resolve();
+          }
         });
 
         // 元のURLを取得する（可能であれば）
         try {
           // グローバルUltravioletオブジェクトにアクセス
-          const uv = (window as any).Ultraviolet;
+          const uv = window.Ultraviolet;
           if (uv && uv.codec && uv.codec.xor && encodedUrl) {
+            console.log('プロキシページ：エンコードされたURLを復号中:', encodedUrl);
             const decodedUrl = uv.codec.xor.decode(decodeURIComponent(encodedUrl));
+            console.log('プロキシページ：復号されたURL:', decodedUrl);
             setOriginalUrl(decodedUrl);
+          } else {
+            console.warn('プロキシページ：Ultravioletが正しく初期化されていないか、URLが不正です');
+            setError('Ultravioletの初期化に失敗したか、URLが無効です');
           }
         } catch (err) {
-          console.error('URLのデコードエラー:', err);
+          console.error('プロキシページ：URLのデコードエラー:', err);
+          setError('URLの処理中にエラーが発生しました');
         }
 
         // iframeを作成してプロキシURLを読み込む
         const iframe = document.getElementById('proxy-iframe') as HTMLIFrameElement;
         if (iframe && encodedUrl) {
+          console.log('プロキシページ：iframeにURLをロード:', `/service/${encodedUrl}`);
           iframe.src = `/service/${encodedUrl}`;
-          iframe.onload = () => setIsLoading(false);
+          iframe.onload = () => {
+            console.log('プロキシページ：iframeのコンテンツが読み込まれました');
+            setIsLoading(false);
+          };
+          iframe.onerror = (err) => {
+            console.error('プロキシページ：iframeの読み込みエラー:', err);
+            setError('コンテンツの読み込みに失敗しました');
+            setIsLoading(false);
+          };
         } else {
+          console.warn('プロキシページ：iframe要素が見つからないか、URLが未指定です');
           setIsLoading(false);
+          if (!encodedUrl) {
+            setError('URLが指定されていません');
+          }
         }
       } catch (error) {
-        console.error('プロキシページの読み込みエラー:', error);
+        console.error('プロキシページ：読み込みエラー:', error);
+        setError(error instanceof Error ? error.message : '未知のエラーが発生しました');
         setIsLoading(false);
       }
     };
 
-    loadUvScript();
+    if (encodedUrl) {
+      loadUvScript();
+    } else {
+      setIsLoading(false);
+    }
 
     // クリーンアップ
     return () => {
@@ -88,9 +127,29 @@ export default function ProxyPage() {
         </div>
       )}
       
+      {error && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-8 max-w-md">
+            <div className="text-red-500 mb-4 text-6xl">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-16 h-16 mx-auto mb-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold mb-3">エラーが発生しました</h2>
+            <p className="mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="btn btn-primary px-4 py-2 rounded-md"
+            >
+              ホームに戻る
+            </button>
+          </div>
+        </div>
+      )}
+      
       <iframe
         id="proxy-iframe"
-        className={`flex-1 w-full ${isLoading ? 'hidden' : 'block'}`}
+        className={`flex-1 w-full ${isLoading || error ? 'hidden' : 'block'}`}
         title="Proxied Content"
         sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts"
       ></iframe>
