@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { openInUltraviolet } from '@/utils/ultraviolet';
-import Image from 'next/image';
+import { openInUltraviolet, registerUVServiceWorker } from '@/utils/ultraviolet';
+import Script from 'next/script';
 
 export default function Home() {
   const router = useRouter();
@@ -20,32 +20,41 @@ export default function Home() {
 
     const loadUvScript = async () => {
       try {
-        console.log('Ultravioletスクリプトを読み込み中...');
+        console.log('Ultravioletの初期化中...');
         
-        // すでにスクリプトが存在するかチェック
-        if (!document.querySelector('script[src="/uv/uv.bundle.js"]')) {
-          // UVクライアントスクリプトを読み込み
-          const script = document.createElement('script');
-          script.src = '/uv/uv.bundle.js';
-          script.async = true;
-          
-          // スクリプトの読み込みが完了したらフラグを設定
-          script.onload = () => {
-            console.log('Ultravioletスクリプトが正常に読み込まれました');
-            setUvReady(true);
-          };
-          
-          script.onerror = (err) => {
-            console.error('Ultravioletスクリプトの読み込みに失敗しました:', err);
-            setError('プロキシスクリプトの読み込みに失敗しました。ページを再読み込みしてください。');
-          };
-          
-          document.head.appendChild(script);
-        } else {
-          // すでに読み込まれている場合
-          console.log('Ultravioletスクリプトはすでに読み込まれています');
+        // すでにUltravioletが初期化されているかチェック
+        if (window.Ultraviolet) {
+          console.log('Ultravioletはすでに初期化されています');
+          // サービスワーカーを登録
+          await registerUVServiceWorker();
           setUvReady(true);
+          return;
         }
+        
+        // Ultravioletの初期化を待つ
+        const checkUvLoaded = setInterval(async () => {
+          if (window.Ultraviolet) {
+            console.log('Ultravioletが正常に初期化されました');
+            clearInterval(checkUvLoaded);
+            
+            // サービスワーカーを登録
+            const registered = await registerUVServiceWorker();
+            if (registered) {
+              setUvReady(true);
+            } else {
+              setError('サービスワーカーの登録に失敗しました');
+            }
+          }
+        }, 100);
+        
+        // 5秒後にタイムアウト
+        setTimeout(() => {
+          if (!window.Ultraviolet) {
+            console.error('Ultravioletの初期化がタイムアウトしました');
+            setError('プロキシの初期化に失敗しました。ページを再読み込みしてください。');
+            clearInterval(checkUvLoaded);
+          }
+        }, 5000);
       } catch (err) {
         console.error('スクリプト読み込みエラー:', err);
         setError('プロキシの初期化に失敗しました。ページを再読み込みしてください。');
@@ -83,6 +92,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Ultravioletスクリプトの読み込み - 正しい順序で読み込むことが重要 */}
+      <Script src="/uv/uv.bundle.js" strategy="beforeInteractive" />
+      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
+      <Script src="/uv/uv.handler.js" strategy="beforeInteractive" />
+      
       <Header />
       
       <div className="home-container flex-1 px-4">

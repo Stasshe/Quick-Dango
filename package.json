@@ -1,5 +1,5 @@
 {
-  "name": "quick-dango",
+  "name": "rapid-dango",
   "version": "0.1.0",
   "description": "高速で安全なウェブプロキシサービス - Rapid Dango",
   "private": true,
@@ -10,8 +10,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@titaniumnetwork-dev/ultraviolet": "^3.2.10",
-    "@tomphttp/bare-client": "^2.2.0-alpha",
     "@tomphttp/bare-server-node": "^2.0.5",
     "babel-loader": "^10.0.0",
     "browserify-zlib": "^0.2.0",

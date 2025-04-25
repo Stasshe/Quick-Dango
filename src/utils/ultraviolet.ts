@@ -1,5 +1,3 @@
-import { createBareClient } from '@tomphttp/bare-client';
-
 // 型定義
 interface UVConfig {
   bare: any;
@@ -26,17 +24,11 @@ declare global {
 }
 
 let uvInstance: UVInstance | null = null;
-let bareClient: any = null;
 
 // Ultravioletインスタンスを初期化する関数
 export const initUltraviolet = async () => {
   // ブラウザ環境でのみ実行
   if (typeof window === 'undefined') return null;
-
-  if (!bareClient) {
-    // Bare Serverに接続
-    bareClient = createBareClient('/bare/');
-  }
 
   if (!uvInstance) {
     // クライアント側でUltravioletスクリプトを動的に読み込む
@@ -48,12 +40,6 @@ export const initUltraviolet = async () => {
         console.error('Ultravioletが読み込まれていません');
         return null;
       }
-
-      // コンフィグを使用してインスタンス化
-      const uvConfig: UVConfig = {
-        bare: bareClient,
-        prefix: '/service/'
-      };
       
       uvInstance = {
         encodeUrl: (url: string) => Ultraviolet.codec.xor.encode(url),
@@ -94,4 +80,49 @@ export const openInUltraviolet = async (url: string): Promise<string> => {
   
   // Ultravioletでプロキシするための処理済みURLを返す
   return uv.encodeUrl(processedUrl);
+};
+
+// ページロード時にUltravioletを初期化するスクリプト
+export const registerUVServiceWorker = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    // ブラウザ環境でのみ実行
+    if (typeof window === 'undefined') {
+      resolve(false);
+      return;
+    }
+
+    console.log('サービスワーカーの登録を試みています...');
+    
+    // サービスワーカーをサポートしているか確認
+    if (!('serviceWorker' in navigator)) {
+      console.error('このブラウザはサービスワーカーをサポートしていません');
+      resolve(false);
+      return;
+    }
+
+    // サービスワーカーが既に登録されているか確認
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+      const hasUVServiceWorker = registrations.some(
+        reg => reg.scope.includes('/service/')
+      );
+
+      if (hasUVServiceWorker) {
+        console.log('Ultravioletサービスワーカーは既に登録されています');
+        resolve(true);
+        return;
+      }
+
+      // サービスワーカーを登録
+      navigator.serviceWorker.register('/uv/uv.sw.js', {
+        scope: '/service/',
+        updateViaCache: 'none'
+      }).then(() => {
+        console.log('Ultravioletサービスワーカーが正常に登録されました');
+        resolve(true);
+      }).catch(err => {
+        console.error('サービスワーカーの登録中にエラーが発生しました:', err);
+        resolve(false);
+      });
+    });
+  });
 };

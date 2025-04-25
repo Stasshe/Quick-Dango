@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
+import Script from 'next/script';
 
 export default function ProxyPage() {
   const searchParams = useSearchParams();
@@ -17,26 +18,25 @@ export default function ProxyPage() {
       try {
         console.log('プロキシページ：Ultravioletスクリプトを読み込み中...');
         
-        // UVクライアントスクリプトを読み込み
-        const uvScript = document.createElement('script');
-        uvScript.src = '/uv/uv.bundle.js';
-        document.head.appendChild(uvScript);
-
-        // スクリプトが読み込まれるのを待つ
-        await new Promise<void>((resolve, reject) => {
-          uvScript.onload = () => {
-            console.log('プロキシページ：Ultravioletスクリプトが読み込まれました');
-            resolve();
-          };
-          uvScript.onerror = () => {
-            reject(new Error('Ultravioletスクリプトの読み込みに失敗しました'));
-          };
+        // サービスワーカーの登録を待つ
+        await new Promise<void>((resolve) => {
+          // グローバルUltravioletオブジェクトが利用可能になるのを待つ
+          const checkUv = setInterval(() => {
+            if (window.Ultraviolet) {
+              console.log('プロキシページ：Ultravioletが初期化されました');
+              clearInterval(checkUv);
+              resolve();
+            }
+          }, 100);
           
-          // 既にスクリプトが読み込まれている場合
-          if (window.Ultraviolet) {
-            console.log('プロキシページ：Ultravioletはすでに初期化されています');
-            resolve();
-          }
+          // 5秒後にタイムアウト
+          setTimeout(() => {
+            if (!window.Ultraviolet) {
+              console.warn('プロキシページ：Ultravioletの初期化がタイムアウトしました');
+              clearInterval(checkUv);
+              resolve(); // タイムアウトしても続行
+            }
+          }, 5000);
         });
 
         // 元のURLを取得する（可能であれば）
@@ -116,6 +116,12 @@ export default function ProxyPage() {
 
   return (
     <div className="flex flex-col h-screen">
+      {/* Ultravioletスクリプトの読み込み */}
+      <Script src="/uv/uv.config.js" strategy="beforeInteractive" />
+      <Script src="/uv/uv.bundle.js" strategy="beforeInteractive" />
+      <Script src="/uv/uv.handler.js" strategy="beforeInteractive" />
+      <Script src="/uv/sw.js" strategy="afterInteractive" />
+      
       <Header currentUrl={originalUrl} isProxyPage={true} />
       
       {isLoading && (

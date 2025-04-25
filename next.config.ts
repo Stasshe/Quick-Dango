@@ -47,8 +47,7 @@ const nextConfig: NextConfig = {
 
     return config;
   },
-  // サービスワーカーとバンドルスクリプトをクライアント側でトランスパイル可能にする
-  transpilePackages: ['@titaniumnetwork-dev/ultraviolet', '@tomphttp/bare-client'],
+  // バンドル済みのスクリプトのみを使用するため、transpilePackagesは不要
 };
 
 export default nextConfig;
