@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rapid Dango
 
-## Getting Started
+高速で安全なウェブプロキシサービス
 
-First, run the development server:
+## 概要
+
+Rapid Dangoは、Ultravioletを使用した高性能Webプロキシサイトです。このプロキシを使用することで、以下のことが可能になります：
+
+- 制限されたウェブサイトへのアクセス
+- プライバシーを保護したブラウジング
+- 高速なプロキシ体験
+
+## 特徴
+
+- **モダンなデザイン**: 黒を基調としたスタイリッシュなUI
+- **高速なプロキシ**: Ultravioletプロキシエンジンによる高速な読み込み
+- **使いやすいインターフェース**: シンプルで直感的な操作性
+- **検索機能**: URL入力またはBing検索をサポート
+
+## 技術スタック
+
+- [Next.js](https://nextjs.org/) - Reactフレームワーク
+- [Ultraviolet](https://github.com/titaniumnetwork-dev/Ultraviolet) - プロキシエンジン
+- [TompHTTP Bare Server](https://github.com/tomphttp/bare-server-node) - Bareサーバー実装
+
+## ローカル開発
+
+### 必要条件
+
+- Node.js 18.0.0以上
+- npm 9.0.0以上
+
+### インストール
 
 ```bash
+# リポジトリのクローン
+git clone https://github.com/yourusername/rapid-dango.git
+cd rapid-dango
+
+# 依存関係のインストール
+npm install
+
+# 開発サーバーの起動
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### ビルド
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# 本番用ビルド
+npm run build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 本番サーバーの起動
+npm start
+```
 
-## Learn More
+## デプロイ
 
-To learn more about Next.js, take a look at the following resources:
+このプロジェクトはRenderに簡単にデプロイできます：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Renderアカウントにログイン
+2. 「New Web Service」を選択
+3. リポジトリをリンク
+4. ビルド設定はrender.yamlに記載済み
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ライセンス
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MITライセンス - 詳細はLICENSEファイルを参照してください。

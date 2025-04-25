@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #121212;
+  --foreground: #f5f5f5;
+  --accent: #3d5afe;
+  --secondary: #303030;
+  --header-bg: #1a1a1a;
+  --input-bg: #252525;
+  --button-hover: #4d4d4d;
 }
 
 @theme inline {
@@ -12,15 +17,66 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+  min-height: 100vh;
+}
+
+.header {
+  background-color: var(--header-bg);
+  border-bottom: 1px solid #333;
+}
+
+.search-input {
+  background-color: var(--input-bg);
+  border: 1px solid #444;
+  color: var(--foreground);
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.btn {
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background-color: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #536dfe;
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  color: var(--foreground);
+}
+
+.btn-secondary:hover {
+  background-color: var(--button-hover);
+}
+
+.home-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 85vh;
+}
+
+.home-title {
+  font-size: 3rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(45deg, #3d5afe, #8c9eff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
