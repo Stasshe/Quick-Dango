@@ -20,6 +20,32 @@ const MODERN_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 const CACHE_TTL = 300; // 5分キャッシュ
 const responseCache = new Map();
 
+// MIMEタイプマッピング
+const MIME_TYPES = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.ttf': 'font/ttf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'font/otf',
+  '.txt': 'text/plain'
+};
+
+// 拡張子に基づいてMIMEタイプを取得
+function getMimeType(path) {
+  const ext = path.match(/\.[^.]*$/)?.[0]?.toLowerCase() || '';
+  return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
 // プロキシリクエスト処理関数
 async function handleProxyRequest(req, res, targetUrl) {
   try {
@@ -41,14 +67,35 @@ async function handleProxyRequest(req, res, targetUrl) {
     }
     
     // URLをClean-upして正規化
-    const normalizedUrl = targetUrl.replace(/\/+/g, '/').replace(':/', '://');
+    let normalizedUrl = targetUrl;
+    
+    // 相対URLを絶対URLに変換（リファラーから）
+    if (!normalizedUrl.startsWith('http')) {
+      const referer = req.headers.referer;
+      if (referer) {
+        try {
+          normalizedUrl = resolveUrl(referer, normalizedUrl);
+        } catch (err) {
+          console.error('URL解決エラー:', err);
+        }
+      }
+    }
+    
+    // URLの正規化
+    try {
+      normalizedUrl = new URL(normalizedUrl).toString();
+    } catch (err) {
+      console.error('URL正規化エラー:', err);
+    }
+    
+    // コンテンツタイプ推測
+    let contentType = getMimeType(normalizedUrl);
     
     // リクエストヘッダーの設定
     const headers = {
       'User-Agent': MODERN_USER_AGENT,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
-      'Referer': new URL(normalizedUrl).origin,
       'DNT': '1',
       'Upgrade-Insecure-Requests': '1',
       'Sec-Fetch-Dest': 'document',
@@ -58,6 +105,14 @@ async function handleProxyRequest(req, res, targetUrl) {
       'Cache-Control': 'max-age=0',
       'Connection': 'keep-alive'
     };
+    
+    // Refererヘッダーの設定
+    try {
+      const url = new URL(normalizedUrl);
+      headers['Referer'] = url.origin;
+    } catch (e) {
+      console.error('Referer設定エラー:', e);
+    }
     
     // 元のリクエストヘッダーから必要なものをコピー
     const headersToCopy = ['cookie', 'content-type'];
@@ -102,7 +157,7 @@ async function handleProxyRequest(req, res, targetUrl) {
     const responseHeaders = {};
     Object.entries(response.headers).forEach(([key, value]) => {
       // 一部のヘッダーは転送しない
-      if (!['content-encoding', 'content-security-policy', 'content-length', 'x-frame-options'].includes(key.toLowerCase())) {
+      if (!['content-encoding', 'content-security-policy', 'content-length', 'x-frame-options', 'strict-transport-security'].includes(key.toLowerCase())) {
         res.setHeader(key, value);
         responseHeaders[key] = value;
       }
@@ -112,8 +167,10 @@ async function handleProxyRequest(req, res, targetUrl) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     
-    // コンテンツタイプの判定
-    const contentType = response.headers['content-type'] || '';
+    // コンテンツタイプを取得（ヘッダーから）
+    contentType = response.headers['content-type'] || contentType;
+    
+    // レスポンスデータ
     const responseData = response.data;
     
     // HTMLコンテンツはパースして変換する
@@ -150,11 +207,14 @@ async function handleProxyRequest(req, res, targetUrl) {
           try {
             const absoluteUrl = resolveUrl(normalizedUrl, url);
             return `url("/custom-proxy?url=${encodeURIComponent(absoluteUrl)}")`;
-          } catch {
+          } catch (err) {
+            console.error('CSS URL変換エラー:', err);
             return match;
           }
         });
       }
+      
+      // JavaScript内のURLは変換しないが、必要に応じて拡張できる
       
       // キャッシュ (GETリクエストのみ)
       if (req.method === 'GET') {
@@ -184,6 +244,7 @@ async function handleProxyRequest(req, res, targetUrl) {
     console.error('プロキシエラー:', error.message);
     if (!res.headersSent) {
       res.statusCode = 500;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.end(`プロキシエラー: ${error.message}`);
     }
   }
@@ -210,6 +271,7 @@ app.prepare().then(() => {
       const targetUrl = url.searchParams.get('url');
       if (!targetUrl) {
         res.statusCode = 400;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         return res.end('URLパラメータが必要です');
       }
       return handleProxyRequest(req, res, targetUrl);
